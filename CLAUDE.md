@@ -27,7 +27,7 @@ Windows 上的轻量文件搜索器。第一版（P0）用本机 Everything 1.4 
 | `tools/IconGen.cs` | 构建时生成应用图标：用文件夹黄画一个矢量放大镜，写出多尺寸的 `bin/Comb.ico`，`build.ps1` 用 `/win32icon` 把它嵌进 exe。托盘和窗口图标运行时从 exe 自身取，不另外画。 |
 | `build.ps1` | 唯一构建入口。只写 ASCII（PowerShell 5.1 按 ANSI 代码页读无 BOM 脚本，中文系统上中文会吞行）。 |
 | `README.md`、`LICENSE` | 对外说明和许可证（MIT）。改了功能、依赖、命令或运行要求时同步 README。 |
-| `docs/` | README 用的截图（`screenshot-*.png`，窗口圆角外透明）。截图不能露出个人文件名：结果窗口用系统文件做搜索词，概览截系统目录那一层。 |
+| `docs/` | README 用的截图（`screenshot-*.png`，窗口圆角外透明），以及 `validation.md` 中的自动验证范围、Windows 本机构建与实机验收步骤。截图不能露出个人文件名：结果窗口用系统文件做搜索词，概览截系统目录那一层。 |
 | `.github/workflows/` | Windows 构建与回归测试；自动测试不代替真实睡眠唤醒、多屏和界面验收。 |
 | `CLAUDE.local.md` | 各自机器上的规则，`.gitignore` 忽略，不入库。 |
 | `bin/` | 构建输出（含 IconGen.exe 和生成的 Comb.ico），`.gitignore` 忽略。 |
@@ -72,7 +72,7 @@ Windows 上的轻量文件搜索器。第一版（P0）用本机 Everything 1.4 
 - 复制到剪贴板用 Win32 API（`Native.SetClipboardText`，打不开时短暂重试）：WPF 的 `Clipboard.SetText` 遇到剪贴板历史等程序占着剪贴板时，文本已写入却报 CLIPBRD_E_CANT_OPEN。
 - 默认打开方式用 `Native.HasDefaultOpenAction` 查关联（ASSOCSTR_COMMAND 或 ASSOCSTR_DELEGATEEXECUTE），不用 HKCR\Unknown 兜底。
 - 双击 Ctrl 用低级键盘钩子，跑在独立线程上；收到睡眠唤醒广播（WM_POWERBROADCAST）后重新挂钩。安装和唤醒监听失败会通过 UI 线程更新托盘状态；每轮首次尝试失败后最多自动重试两次，也可从托盘手动重试。挂钩、卸载和重试定时器始终在同一钩子线程执行，停止后不再重挂，不在钩子线程弹窗或等待 UI。
-- 窗口每次切换形态都重新取工作区：隐藏时按鼠标所在屏幕，可见时按窗口所在屏幕；不缓存上次呼出时的屏幕。`WindowPlacement.cs` 集中处理选屏策略与尺寸边界，结果与概览能放下时保持实际位置和大小，小工作区限制优先于默认最小尺寸。
+- 窗口每次切换形态都重新取工作区：隐藏时按鼠标所在屏幕，可见时按窗口所在屏幕；不缓存上次呼出时的屏幕。`WindowPlacement.cs` 集中处理选屏策略与尺寸边界，结果与概览能放下时保持实际位置和大小。默认最小宽度沿用原先实际生效的 680 个 WPF 逻辑单位；小工作区限制优先于默认尺寸和留边。
 
 ## 验证方式
 

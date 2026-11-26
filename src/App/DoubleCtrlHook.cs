@@ -202,13 +202,13 @@ namespace Comb.App
                         ctrlDown = false;
                         ctrlClean = false;
                         taps = 0;
-                        if (!available) message = "双 Ctrl 热键安装失败";
+                        if (!available) message = "双击 Ctrl 热键安装失败";
                     }
                 }
                 if (available && powerWindow == IntPtr.Zero)
                 {
                     error = wakeError;
-                    message = "双 Ctrl 可用，但唤醒监视窗口创建失败；睡眠唤醒后不能自动恢复";
+                    message = "双击 Ctrl 可用，但唤醒监视窗口创建失败；睡眠唤醒后不能自动恢复";
                 }
                 if ((!available || powerWindow == IntPtr.Zero) && attempts < MaxAttempts)
                 {

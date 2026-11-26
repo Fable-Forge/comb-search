@@ -86,4 +86,6 @@ if ($RunTests) {
 
 Get-Item -LiteralPath (Join-Path $bin 'Comb.exe'), (Join-Path $bin 'Probe.exe') |
     ForEach-Object { Write-Output ('  ' + $_.Name + '  ' + $_.Length + ' bytes') }
+$appVersion = (Get-Item -LiteralPath (Join-Path $bin 'Comb.exe')).VersionInfo
+Write-Output ('Comb version: ' + $appVersion.ProductVersion + ' (file ' + $appVersion.FileVersion + ')')
 Write-Output 'BUILD OK'

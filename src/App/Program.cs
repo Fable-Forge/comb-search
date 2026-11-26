@@ -115,8 +115,8 @@ namespace Comb.App
             menu.Items.Add(show);
             menu.Items.Add(new Forms.ToolStripMenuItem("内容概览", null, (s, a) => ShowOverview()));
             menu.Items.Add(new Forms.ToolStripSeparator());
-            hotkeyStatusItem = new Forms.ToolStripMenuItem("双 Ctrl：正在启用") { Enabled = false };
-            retryHotkeyItem = new Forms.ToolStripMenuItem("重新启用双 Ctrl", null, (s, a) => RetryHotkey()) { Enabled = false };
+            hotkeyStatusItem = new Forms.ToolStripMenuItem("双击 Ctrl：正在启用") { Enabled = false };
+            retryHotkeyItem = new Forms.ToolStripMenuItem("重新启用双击 Ctrl", null, (s, a) => RetryHotkey()) { Enabled = false };
             menu.Items.Add(hotkeyStatusItem);
             menu.Items.Add(retryHotkeyItem);
             menu.Items.Add(new Forms.ToolStripSeparator());
@@ -129,7 +129,7 @@ namespace Comb.App
             tray = new Forms.NotifyIcon
             {
                 Icon = appIcon,
-                Text = "Comb（正在启用双 Ctrl）",
+                Text = "Comb（正在启用双击 Ctrl）",
                 ContextMenuStrip = menu,
                 Visible = true
             };
@@ -165,21 +165,21 @@ namespace Comb.App
             if (!status.WakeMonitoringAvailable && status.WakeErrorCode != 0 && status.WakeErrorCode != status.ErrorCode)
                 detail += "；唤醒监视错误码 " + status.WakeErrorCode;
 
-            hotkeyStatusItem.Text = !status.CanRetry ? "双 Ctrl：监听已停止，请重启 Comb" :
-                healthy ? "双 Ctrl：已启用" :
-                status.Available ? "双 Ctrl：可用，唤醒恢复暂不可用" :
-                status.Retrying ? "双 Ctrl：暂不可用，正在重试" : "双 Ctrl：暂不可用";
+            hotkeyStatusItem.Text = !status.CanRetry ? "双击 Ctrl：监听已停止，请重启 Comb" :
+                healthy ? "双击 Ctrl：已启用" :
+                status.Available ? "双击 Ctrl：可用，唤醒恢复暂不可用" :
+                status.Retrying ? "双击 Ctrl：暂不可用，正在重试" : "双击 Ctrl：暂不可用";
             if (status.ErrorCode != 0) hotkeyStatusItem.Text += "（错误 " + status.ErrorCode + "）";
             hotkeyStatusItem.ToolTipText = detail;
             retryHotkeyItem.Enabled = status.CanRetry && !status.Retrying;
             tray.Text = healthy ? "Comb（双击 Ctrl 呼出）" : status.Available ?
-                "Comb（双 Ctrl 可用；唤醒恢复受限）" : "Comb（热键暂不可用；可从托盘打开）";
+                "Comb（双击 Ctrl 可用；唤醒恢复受限）" : "Comb（热键暂不可用；可从托盘打开）";
 
             if (!healthy && !hotkeyNoticeShown)
             {
                 hotkeyNoticeShown = true;  // 一次运行只提示一次；后续状态仍可在托盘菜单查看。
                 tray.ShowBalloonTip(5000, "Comb 快捷键提示", detail + "。仍可点击托盘打开搜索。" +
-                    (status.Retrying ? "正在自动重试。" : status.CanRetry ? "可从托盘选择“重新启用双 Ctrl”。" : "请退出后重新启动 Comb。"),
+                    (status.Retrying ? "正在自动重试。" : status.CanRetry ? "可从托盘选择“重新启用双击 Ctrl”。" : "请退出后重新启动 Comb。"),
                     Forms.ToolTipIcon.Warning);
             }
         }
@@ -190,11 +190,11 @@ namespace Comb.App
             if (hook.RequestRetry())
             {
                 retryHotkeyItem.Enabled = false;
-                hotkeyStatusItem.Text = "双 Ctrl：正在重新启用";
+                hotkeyStatusItem.Text = "双击 Ctrl：正在重新启用";
             }
             else
             {
-                hotkeyStatusItem.Text = "双 Ctrl：无法安排重试，请退出后重启 Comb";
+                hotkeyStatusItem.Text = "双击 Ctrl：无法安排重试，请退出后重启 Comb";
                 retryHotkeyItem.Enabled = false;
             }
         }

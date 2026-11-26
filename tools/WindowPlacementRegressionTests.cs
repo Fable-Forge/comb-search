@@ -17,6 +17,7 @@ namespace Comb.Tools
                 ExpandedModesKeepBoundsAtWorkAreaEdges,
                 ExpandedModesKeepNegativeCoordinates,
                 HiddenWindowCentersOnNegativeCoordinateScreen,
+                OrdinaryScreenKeepsEstablishedMinimumWidth,
                 SmallLandscapeFitsWithCompatibleMinimums,
                 NarrowPortraitFitsBothModes,
                 CollapsingWindowClampsAboveScreen,
@@ -108,12 +109,21 @@ namespace Comb.Tools
             Contained(area, result);
         }
 
+        static void OrdinaryScreenKeepsEstablishedMinimumWidth()
+        {
+            var area = new WindowBounds(0, 0, 1920, 1040);
+            var result = WindowPlacement.Calculate(area, new WindowBounds(620, 150, 680, 58), false, false, true, 640, 760);
+            Equal(680, result.Bounds.Width, "普通工作区展开时应保留原先实际生效的 680 最小宽度");
+            Equal(680, result.MinWidth, "不能把普通工作区的拖动下限无意降到 640");
+            Contained(area, result);
+        }
+
         static void SmallLandscapeFitsWithCompatibleMinimums()
         {
             var area = new WindowBounds(0, 0, 640, 340);
             var result = WindowPlacement.Calculate(area, new WindowBounds(0, 0, 680, 58), true, false, true, 1180, 760);
             SameBounds(new WindowBounds(16, 24, 608, 292), result.Bounds, "高缩放小工作区应先服从可用空间");
-            Equal(608, result.MinWidth, "不能再被旧 680 或 640 最小宽度撑大");
+            Equal(608, result.MinWidth, "小工作区不能被默认 680 最小宽度撑大");
             Equal(292, result.MinHeight, "不能再被 360 最小高度撑大");
             Contained(area, result);
         }

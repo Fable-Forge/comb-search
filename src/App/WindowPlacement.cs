@@ -35,7 +35,8 @@ namespace Comb.App
     static class WindowPlacement
     {
         public const double BarWidth = 680, BarHeight = 58;
-        public const double MinExpandedWidth = 640, MinExpandedHeight = 360;
+        // 原版本的 Window.MinWidth 为 680；保留普通工作区的实际最小宽度，小工作区仍由上限收缩。
+        public const double MinExpandedWidth = BarWidth, MinExpandedHeight = 360;
 
         public static WindowBounds ChooseWorkArea(bool isVisible, Func<WindowBounds> atCursor, Func<WindowBounds> atWindow)
         {
