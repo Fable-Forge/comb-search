@@ -8,6 +8,7 @@ namespace Comb.App
     static class Native
     {
         public const uint WM_QUIT = 0x0012;
+        public const uint WM_TIMER = 0x0113;
         public const uint WM_POWERBROADCAST = 0x0218;
         public const int PBT_APMRESUMESUSPEND = 0x0007;
         public const int PBT_APMRESUMEAUTOMATIC = 0x0012;
@@ -36,16 +37,49 @@ namespace Comb.App
             };
             if (RegisterClassEx(ref wc) == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
             IntPtr hwnd = CreateWindowEx(0, className, "", 0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
-            if (hwnd == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (hwnd == IntPtr.Zero)
+            {
+                int error = Marshal.GetLastWin32Error();
+                // 创建窗口失败也要撤销类注册，否则下次重试只会得到“类已存在”。
+                UnregisterClass(className, wc.hInstance);
+                throw new Win32Exception(error);
+            }
             return hwnd;
         }
 
-        /// <summary>当前线程的消息循环，收到 WM_QUIT 返回。</summary>
-        public static void RunMessageLoop()
+        public static void DestroyHiddenWindow(IntPtr hwnd, string className)
+        {
+            if (hwnd != IntPtr.Zero) DestroyWindow(hwnd);
+            UnregisterClass(className, GetModuleHandle(null));
+        }
+
+        /// <summary>发布线程 ID 前建立消息队列，避免过早的停止/重试消息丢失。</summary>
+        public static void EnsureMessageQueue()
         {
             MSG msg;
-            while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+            PeekMessage(out msg, IntPtr.Zero, 0, 0, 0);
+        }
+
+        public static int LastError() { return Marshal.GetLastWin32Error(); }
+
+        /// <summary>当前线程的消息循环；正常退出返回 0，失败返回 Win32 错误码。</summary>
+        public static int RunMessageLoop(Action<uint, IntPtr, IntPtr> onThreadMessage)
+        {
+            MSG msg;
+            while (true)
             {
+                int result = GetMessage(out msg, IntPtr.Zero, 0, 0);
+                if (result == 0) return 0;
+                if (result == -1)
+                {
+                    int error = Marshal.GetLastWin32Error();
+                    return error == 0 ? 1 : error;
+                }
+                if (msg.hwnd == IntPtr.Zero)
+                {
+                    onThreadMessage(msg.message, msg.wParam, msg.lParam);
+                    continue;
+                }
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
             }
@@ -298,10 +332,25 @@ namespace Comb.App
                                             IntPtr instance, IntPtr param);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        public static extern IntPtr DefWindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+        static extern bool UnregisterClass(string className, IntPtr instance);
+
+        [DllImport("user32.dll")]
+        static extern bool DestroyWindow(IntPtr hwnd);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern IntPtr DefWindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern int GetMessage(out MSG msg, IntPtr hwnd, uint filterMin, uint filterMax);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern bool PeekMessage(out MSG msg, IntPtr hwnd, uint filterMin, uint filterMax, uint remove);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern UIntPtr SetTimer(IntPtr hwnd, UIntPtr id, uint milliseconds, IntPtr callback);
+
+        [DllImport("user32.dll")]
+        public static extern bool KillTimer(IntPtr hwnd, UIntPtr id);
 
         [DllImport("user32.dll")]
         static extern bool TranslateMessage(ref MSG msg);
@@ -309,7 +358,7 @@ namespace Comb.App
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         static extern IntPtr DispatchMessage(ref MSG msg);
 
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool PostThreadMessage(uint threadId, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll")]
@@ -321,7 +370,7 @@ namespace Comb.App
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetWindowsHookEx(int idHook, HookProc proc, IntPtr hMod, uint threadId);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         public static extern bool UnhookWindowsHookEx(IntPtr hook);
 
         [DllImport("user32.dll")]

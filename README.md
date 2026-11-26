@@ -55,6 +55,10 @@ Windows 上的轻量文件搜索器：双击 Ctrl 呼出浮动搜索条，边输
 
 托盘图标：左键单击呼出搜索条；右键菜单有「显示搜索」「内容概览」「开机自启」「退出」。
 
+双击 Ctrl 安装失败时，程序会在托盘提示快捷键暂不可用，并进行有限次数的自动重试；点击托盘仍可正常打开搜索。右键菜单提供热键状态和「重新启用双 Ctrl」，可以手动重试。若睡眠唤醒监听没有建立，托盘会单独说明这个限制。
+
+窗口从隐藏状态呼出时，出现在鼠标所在屏幕；已经显示的窗口拖到另一块屏幕后，切换搜索条、结果和概览会采用窗口当前所在屏幕的工作区。
+
 命令行参数：
 
 - `Comb.exe`：启动。已在运行时再执行一次，等于呼出搜索条
@@ -94,6 +98,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Csc "<csc.exe �
 - `IconGen.exe`、`Comb.ico`：构建时生成应用图标用的，构建脚本会把图标嵌进 exe
 
 正在运行的 Comb.exe 会占住输出文件，构建前先从托盘菜单退出。
+
+构建并执行热键恢复、窗口定位回归测试：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -RunTests
+```
+
+测试不需要安装 Everything，也不会发送真实键盘输入。热键测试使用 Win32 替身，窗口测试执行生产代码中的几何计算。Windows CI 会执行相同命令；通过后可以在对应 Actions 运行的 Artifacts 中下载编译包。真实睡眠唤醒、混合缩放多屏和界面效果的验收步骤见 [验证说明](docs/validation.md)。
 
 Probe 用法示例：
 

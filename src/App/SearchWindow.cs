@@ -25,9 +25,8 @@ namespace Comb.App
     {
         enum Mode { Bar, Results, Overview }
 
-        const double BarWidth = 680, BarContentHeight = 58;
+        const double BarWidth = WindowPlacement.BarWidth, BarContentHeight = WindowPlacement.BarHeight;
         const double BarHeight = BarContentHeight;
-        const double MinExpandedWidth = 640, MinExpandedHeight = 360;
         const int DebounceMs = 90;
 
         static readonly KindFilter[] Kinds = { KindFilter.Folder, KindFilter.File, KindFilter.Document, KindFilter.Image, KindFilter.Video };
@@ -69,7 +68,6 @@ namespace Comb.App
         int pendingOpen;          // 0 无；1 结果到了就打开；2 结果到了就打开所在位置
         // 结果和概览共用一份尺寸：两者互相切换时窗口不跳动（用户要求，2026-11-21）
         double expandedWidth = 1180, expandedHeight = 760;
-        Rect workArea = SystemParameters.WorkArea;
 
         public SearchWindow(IFileIndex index)
         {
@@ -292,7 +290,6 @@ namespace Comb.App
             bool wasVisible = IsVisible;
             if (!wasVisible)
             {
-                workArea = WorkAreaAtCursor();
                 bool hasText = input.Text.Trim().Length > 0;
                 SetMode(hasText ? Mode.Results : Mode.Bar, true);
             }
@@ -310,7 +307,6 @@ namespace Comb.App
         public void ShowOverview()
         {
             bool wasVisible = IsVisible;
-            if (!wasVisible) workArea = WorkAreaAtCursor();
             // 概览页的搜索框是空的；开始打字就切到搜索结果。清空时不要先收回搜索条（会多闪一次）
             if (input.Text.Length > 0)
             {
@@ -363,33 +359,25 @@ namespace Comb.App
         void SetMode(Mode m, bool reposition)
         {
             if (m == mode && !reposition) return;
+            // 每次形态切换都重新取工作区；拖到另一屏后不能再按上次呼出时的旧屏夹住位置。
+            WindowBounds workArea = WindowPlacement.ChooseWorkArea(IsVisible,
+                () => WorkAreaOf(Forms.Screen.FromPoint(Forms.Cursor.Position)),
+                () => WorkAreaOf(Forms.Screen.FromHandle(Hwnd)));
             // 离开结果或概览形态时，记住用户拖出来的尺寸（只在内存里；两种形态共用）
             if (m != mode && mode != Mode.Bar && IsVisible && WindowState == WindowState.Normal)
             {
                 expandedWidth = ActualWidth;
                 expandedHeight = ActualHeight;
             }
-            double centerX = reposition ? workArea.Left + workArea.Width / 2 : Left + ActualWidth / 2;
-            double topY = reposition ? workArea.Top + workArea.Height * 0.16 : Top;
             bool wasBig = mode != Mode.Bar;
             mode = m;
             bool big = m != Mode.Bar;
 
             // 目标位置和大小。结果和概览用同一套尺寸和定位规则，互相切换时位置大小都不变
-            double w, h;
-            if (big)
-            {
-                w = Math.Min(Math.Max(expandedWidth, MinExpandedWidth), workArea.Width - 32);
-                h = Math.Max(MinExpandedHeight, Math.Min(expandedHeight, workArea.Height - 48));
-                // 下面放不下就把窗口整体往上挪，而不是压扁
-                if (topY + h > workArea.Bottom - 24) topY = Math.Max(workArea.Top + 24, workArea.Bottom - 24 - h);
-            }
-            else
-            {
-                w = BarWidth;
-                h = BarHeight;
-            }
-            var target = new Rect(Math.Max(workArea.Left, Math.Min(centerX - w / 2, workArea.Right - w)), topY, w, h);
+            var placement = WindowPlacement.Calculate(workArea, new WindowBounds(Left, Top, ActualWidth, ActualHeight),
+                reposition, wasBig, big, expandedWidth, expandedHeight);
+            WindowBounds bounds = placement.Bounds;
+            var target = new Rect(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
 
             // 从搜索条展开时：先让窗口隐身，按最终尺寸排好版、一次摆好位置，等新画面画完再现身，
             // 避免露出没画好的白块和按旧尺寸排版的错位帧（2026-11-25 用户录屏反馈展开闪烁）
@@ -401,9 +389,12 @@ namespace Comb.App
             UpdateModeButton();
             ResizeMode = big ? ResizeMode.CanResize : ResizeMode.NoResize;
             chrome.ResizeBorderThickness = new Thickness(big ? 6 : 0);
-            MinHeight = 0;   // 先放开最小高度，免得它自己先把窗口撑大一次
+            // 先放开旧形态的最小尺寸，再一次性摆好新位置；新约束不会把已经适配的小窗口撑出屏幕。
+            MinWidth = 0;
+            MinHeight = 0;
             ApplyBounds(target);
-            if (big) MinHeight = MinExpandedHeight;
+            MinWidth = placement.MinWidth;
+            MinHeight = placement.MinHeight;
 
             if (reveal) RevealAfterRender(m == Mode.Results ? (UIElement)body : overviewPage);
         }
@@ -503,13 +494,13 @@ namespace Comb.App
             modeButton.ToolTip = mode == Mode.Overview ? "返回搜索" : "已索引内容概览";
         }
 
-        /// <summary>鼠标所在屏幕的工作区（换算成 WPF 的设备无关单位）。</summary>
-        static Rect WorkAreaAtCursor()
+        /// <summary>目标屏幕的工作区；保留当前 system-DPI 模式，换算成 WPF 的设备无关单位。</summary>
+        static WindowBounds WorkAreaOf(Forms.Screen screen)
         {
-            System.Drawing.Rectangle wa = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea;
+            System.Drawing.Rectangle wa = screen.WorkingArea;
             double scale;
             using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero)) scale = g.DpiX / 96.0;
-            return new Rect(wa.Left / scale, wa.Top / scale, wa.Width / scale, wa.Height / scale);
+            return new WindowBounds(wa.Left / scale, wa.Top / scale, wa.Width / scale, wa.Height / scale);
         }
 
         // ================= 搜索 =================

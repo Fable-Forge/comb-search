@@ -1,9 +1,9 @@
 # Comb build entry. Keep this file ASCII only:
 # Windows PowerShell 5.1 reads BOM-less scripts as the ANSI code page (GBK on Chinese Windows).
 # Usage (from the repository root):
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 [-Csc <path to csc.exe>]
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 [-Csc <path to csc.exe>] [-RunTests]
 # Without -Csc, the Roslyn csc.exe of the newest Visual Studio / Build Tools install is located with vswhere.
-param([string]$Csc = '')
+param([string]$Csc = '', [switch]$RunTests)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $programFilesX86 = ${env:ProgramFiles(x86)}
@@ -65,6 +65,24 @@ if ($LASTEXITCODE -ne 0) { throw ('Comb.exe build failed, csc exit ' + $LASTEXIT
 Write-Output ('Compiling Probe.exe (' + $probeSrc.Count + ' files)')
 & $Csc @common @probeRefs '/target:exe' ('/out:' + (Join-Path $bin 'Probe.exe')) @probeSrc
 if ($LASTEXITCODE -ne 0) { throw ('Probe.exe build failed, csc exit ' + $LASTEXITCODE) }
+
+if ($RunTests) {
+    $testRefs = Get-Refs @('mscorlib', 'System', 'System.Core')
+    $testSuites = @(
+        @{ Name = 'HotkeyRegressionTests'; Platform = 'anycpu'; Sources = @('src\App\DoubleCtrlHook.cs', 'tools\HotkeyRegressionTests.cs') },
+        @{ Name = 'HotkeyRegressionTests-x86'; Platform = 'x86'; Sources = @('src\App\DoubleCtrlHook.cs', 'tools\HotkeyRegressionTests.cs') },
+        @{ Name = 'WindowPlacementRegressionTests'; Platform = 'anycpu'; Sources = @('src\App\WindowPlacement.cs', 'tools\WindowPlacementRegressionTests.cs') }
+    )
+    foreach ($suite in $testSuites) {
+        $testExe = Join-Path $bin ($suite.Name + '.exe')
+        $testSources = @($suite.Sources | ForEach-Object { Join-Path $root $_ })
+        Write-Output ('Compiling ' + $suite.Name)
+        & $Csc @common @testRefs '/target:exe' ('/platform:' + $suite.Platform) ('/out:' + $testExe) @testSources
+        if ($LASTEXITCODE -ne 0) { throw ($suite.Name + ' build failed, csc exit ' + $LASTEXITCODE) }
+        & $testExe
+        if ($LASTEXITCODE -ne 0) { throw ($suite.Name + ' failed, exit ' + $LASTEXITCODE) }
+    }
+}
 
 Get-Item -LiteralPath (Join-Path $bin 'Comb.exe'), (Join-Path $bin 'Probe.exe') |
     ForEach-Object { Write-Output ('  ' + $_.Name + '  ' + $_.Length + ' bytes') }

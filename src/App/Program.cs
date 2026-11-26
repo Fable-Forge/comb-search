@@ -69,8 +69,12 @@ namespace Comb.App
         SearchWindow searchWindow;
         Forms.NotifyIcon tray;
         Forms.ToolStripMenuItem autoStartItem;
+        Forms.ToolStripMenuItem hotkeyStatusItem;
+        Forms.ToolStripMenuItem retryHotkeyItem;
         DoubleCtrlHook hook;
         System.Drawing.Icon appIcon;
+        volatile bool exiting;
+        bool hotkeyNoticeShown;
 
         public CombApp(bool background, bool overview)
         {
@@ -92,7 +96,8 @@ namespace Comb.App
             searchWindow = new SearchWindow(index);
             CreateTray();
 
-            hook = new DoubleCtrlHook(() => Dispatcher.BeginInvoke(new Action(searchWindow.Toggle)));
+            hook = new DoubleCtrlHook(() => PostToUi(searchWindow.Toggle),
+                status => PostToUi(() => UpdateHotkeyStatus(status)));
             hook.Start();
 
             ListenSignal(Program.ShowEventName, () => searchWindow.ShowBar());
@@ -104,11 +109,16 @@ namespace Comb.App
 
         void CreateTray()
         {
-            var menu = new Forms.ContextMenuStrip();
+            var menu = new Forms.ContextMenuStrip { ShowItemToolTips = true };
             var show = new Forms.ToolStripMenuItem("显示搜索", null, (s, a) => searchWindow.ShowBar());
             show.Font = new System.Drawing.Font(show.Font, System.Drawing.FontStyle.Bold);
             menu.Items.Add(show);
             menu.Items.Add(new Forms.ToolStripMenuItem("内容概览", null, (s, a) => ShowOverview()));
+            menu.Items.Add(new Forms.ToolStripSeparator());
+            hotkeyStatusItem = new Forms.ToolStripMenuItem("双 Ctrl：正在启用") { Enabled = false };
+            retryHotkeyItem = new Forms.ToolStripMenuItem("重新启用双 Ctrl", null, (s, a) => RetryHotkey()) { Enabled = false };
+            menu.Items.Add(hotkeyStatusItem);
+            menu.Items.Add(retryHotkeyItem);
             menu.Items.Add(new Forms.ToolStripSeparator());
             autoStartItem = new Forms.ToolStripMenuItem("开机自启", null, (s, a) => ToggleAutoStart());
             menu.Items.Add(autoStartItem);
@@ -119,7 +129,7 @@ namespace Comb.App
             tray = new Forms.NotifyIcon
             {
                 Icon = appIcon,
-                Text = "Comb（双击 Ctrl 呼出）",
+                Text = "Comb（正在启用双 Ctrl）",
                 ContextMenuStrip = menu,
                 Visible = true
             };
@@ -127,6 +137,66 @@ namespace Comb.App
             {
                 if (a.Button == Forms.MouseButtons.Left) searchWindow.ShowBar();
             };
+        }
+
+        void PostToUi(Action action)
+        {
+            if (exiting || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+            try
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // 退出前已经排队的回调，也不能再访问已释放的托盘或窗口。
+                    if (!exiting) action();
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                // 检查后 Dispatcher 仍可能进入关闭阶段；后台钩子不应因此抛出未处理异常。
+            }
+        }
+
+        void UpdateHotkeyStatus(DoubleCtrlHook.Status status)
+        {
+            if (exiting || tray == null) return;
+            bool healthy = status.Available && status.WakeMonitoringAvailable;
+            string detail = status.Message;
+            if (status.ErrorCode != 0) detail += "（错误码 " + status.ErrorCode + "）";
+            if (!status.WakeMonitoringAvailable && status.WakeErrorCode != 0 && status.WakeErrorCode != status.ErrorCode)
+                detail += "；唤醒监视错误码 " + status.WakeErrorCode;
+
+            hotkeyStatusItem.Text = !status.CanRetry ? "双 Ctrl：监听已停止，请重启 Comb" :
+                healthy ? "双 Ctrl：已启用" :
+                status.Available ? "双 Ctrl：可用，唤醒恢复暂不可用" :
+                status.Retrying ? "双 Ctrl：暂不可用，正在重试" : "双 Ctrl：暂不可用";
+            if (status.ErrorCode != 0) hotkeyStatusItem.Text += "（错误 " + status.ErrorCode + "）";
+            hotkeyStatusItem.ToolTipText = detail;
+            retryHotkeyItem.Enabled = status.CanRetry && !status.Retrying;
+            tray.Text = healthy ? "Comb（双击 Ctrl 呼出）" : status.Available ?
+                "Comb（双 Ctrl 可用；唤醒恢复受限）" : "Comb（热键暂不可用；可从托盘打开）";
+
+            if (!healthy && !hotkeyNoticeShown)
+            {
+                hotkeyNoticeShown = true;  // 一次运行只提示一次；后续状态仍可在托盘菜单查看。
+                tray.ShowBalloonTip(5000, "Comb 快捷键提示", detail + "。仍可点击托盘打开搜索。" +
+                    (status.Retrying ? "正在自动重试。" : status.CanRetry ? "可从托盘选择“重新启用双 Ctrl”。" : "请退出后重新启动 Comb。"),
+                    Forms.ToolTipIcon.Warning);
+            }
+        }
+
+        void RetryHotkey()
+        {
+            if (exiting || hook == null) return;
+            if (hook.RequestRetry())
+            {
+                retryHotkeyItem.Enabled = false;
+                hotkeyStatusItem.Text = "双 Ctrl：正在重新启用";
+            }
+            else
+            {
+                hotkeyStatusItem.Text = "双 Ctrl：无法安排重试，请退出后重启 Comb";
+                retryHotkeyItem.Enabled = false;
+            }
         }
 
         void ShowOverview()
@@ -157,7 +227,7 @@ namespace Comb.App
                 while (true)
                 {
                     handle.WaitOne();
-                    Dispatcher.BeginInvoke(action);
+                    PostToUi(action);
                 }
             });
             t.IsBackground = true;
@@ -167,13 +237,29 @@ namespace Comb.App
 
         void ExitApp()
         {
+            if (exiting) return;
+            exiting = true;
             hook.Stop();
             tray.Visible = false;
             tray.Dispose();
+            tray = null;
             searchWindow.AllowClose();
             var disposable = index as IDisposable;
             if (disposable != null) disposable.Dispose();
             Shutdown();
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            exiting = true;
+            if (hook != null) hook.Stop();
+            if (tray != null)
+            {
+                tray.Visible = false;
+                tray.Dispose();
+                tray = null;
+            }
+            base.OnExit(e);
         }
 
         void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

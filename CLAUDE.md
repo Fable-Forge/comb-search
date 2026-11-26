@@ -23,10 +23,12 @@ Windows 上的轻量文件搜索器。第一版（P0）用本机 Everything 1.4 
 | `src/Engine/` | 引擎层。`IFileIndex.cs`：界面唯一依赖的接口和数据类型，与引擎无关。`EverythingIndex.cs`：Everything IPC 实现，是整个项目里唯一知道 Everything（窗口类、IPC 常量、搜索语法、扩展名列表、拉起逻辑）的文件。只引用 System 系列程序集，不引用 WPF / WinForms，Probe 也编译它。 |
 | `src/App/` | 界面与宿主：入口 / 单实例 / 托盘 / 开机自启、双击 Ctrl 钩子、搜索窗口（搜索条 / 结果 / 概览三种形态共用一个窗口和搜索框）、结果列表、概览页（`OverviewPage.cs`，嵌在搜索窗口里，不单独开窗口）、文件右键菜单（`ShellMenu.cs`，内置项 + Windows 原生右键菜单）、主题与格式化、exe 版本信息（`AssemblyInfo.cs`）。 |
 | `tools/Probe.cs` | 命令行探针，直接调引擎打印版本、总数、耗时和前几条，用来冒烟。 |
+| `tools/*RegressionTests.cs` | 无第三方依赖的回归测试，由 `build.ps1 -RunTests` 编译和执行；热键测试用 Win32 替身，不发送真实键盘输入。 |
 | `tools/IconGen.cs` | 构建时生成应用图标：用文件夹黄画一个矢量放大镜，写出多尺寸的 `bin/Comb.ico`，`build.ps1` 用 `/win32icon` 把它嵌进 exe。托盘和窗口图标运行时从 exe 自身取，不另外画。 |
 | `build.ps1` | 唯一构建入口。只写 ASCII（PowerShell 5.1 按 ANSI 代码页读无 BOM 脚本，中文系统上中文会吞行）。 |
 | `README.md`、`LICENSE` | 对外说明和许可证（MIT）。改了功能、依赖、命令或运行要求时同步 README。 |
 | `docs/` | README 用的截图（`screenshot-*.png`，窗口圆角外透明）。截图不能露出个人文件名：结果窗口用系统文件做搜索词，概览截系统目录那一层。 |
+| `.github/workflows/` | Windows 构建与回归测试；自动测试不代替真实睡眠唤醒、多屏和界面验收。 |
 | `CLAUDE.local.md` | 各自机器上的规则，`.gitignore` 忽略，不入库。 |
 | `bin/` | 构建输出（含 IconGen.exe 和生成的 Comb.ico），`.gitignore` 忽略。 |
 
@@ -36,6 +38,7 @@ Windows 上的轻量文件搜索器。第一版（P0）用本机 Everything 1.4 
 
 - 构建：`powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1`
   编译器默认用 vswhere 找最新的 Visual Studio / Build Tools 里的 Roslyn `csc.exe`，找不到时加 `-Csc <csc.exe 路径>`。Comb.exe 在运行时会占住输出文件，脚本会先检查并提示退出（托盘菜单 → 退出）。
+- 构建并执行回归：`powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -RunTests`。热键故障恢复测试使用 Win32 替身；窗口测试执行生产代码中的几何计算，不会抢占前台或发送按键。
 - 冒烟：
   - `.\bin\Probe.exe ".html"`：总数、耗时、前 10 条
   - `.\bin\Probe.exe ".html" --kind doc --date week --count`：只取计数（kind = folder/file/doc/image/video，date = day/week/month）
@@ -68,7 +71,8 @@ Windows 上的轻量文件搜索器。第一版（P0）用本机 Everything 1.4 
 - 排序：Everything 升序时文件夹在前、降序时在后。按类型（扩展名）排序在 Everything 打开「快速扩展名排序」后明显变快。
 - 复制到剪贴板用 Win32 API（`Native.SetClipboardText`，打不开时短暂重试）：WPF 的 `Clipboard.SetText` 遇到剪贴板历史等程序占着剪贴板时，文本已写入却报 CLIPBRD_E_CANT_OPEN。
 - 默认打开方式用 `Native.HasDefaultOpenAction` 查关联（ASSOCSTR_COMMAND 或 ASSOCSTR_DELEGATEEXECUTE），不用 HKCR\Unknown 兜底。
-- 双击 Ctrl 用低级键盘钩子，跑在独立线程上；收到睡眠唤醒广播（WM_POWERBROADCAST）后重新挂钩。
+- 双击 Ctrl 用低级键盘钩子，跑在独立线程上；收到睡眠唤醒广播（WM_POWERBROADCAST）后重新挂钩。安装和唤醒监听失败会通过 UI 线程更新托盘状态；每轮首次尝试失败后最多自动重试两次，也可从托盘手动重试。挂钩、卸载和重试定时器始终在同一钩子线程执行，停止后不再重挂，不在钩子线程弹窗或等待 UI。
+- 窗口每次切换形态都重新取工作区：隐藏时按鼠标所在屏幕，可见时按窗口所在屏幕；不缓存上次呼出时的屏幕。`WindowPlacement.cs` 集中处理选屏策略与尺寸边界，结果与概览能放下时保持实际位置和大小，小工作区限制优先于默认最小尺寸。
 
 ## 验证方式
 
